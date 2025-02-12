@@ -7,6 +7,12 @@
                     "valid_options": "list",
                     "description": "A Comma Seperated list of Ceton device IP addresses"
                 },
+          "pcie_ip":{
+                    "value": "none",
+                    "config_file": true,
+                    "config_web": true,
+                    "description": "IP assigned by the Ceton to the PCIe network interface"
+                },
 	  "device_tuners":{
                     "value": "4",
                     "config_file": true,
