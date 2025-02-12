@@ -3,6 +3,7 @@ import re
 import xmltodict
 import subprocess
 import threading
+import os
 
 import fHDHR.exceptions
 
@@ -44,7 +45,7 @@ class Plugin_OBJ():
                     hwtype = self.get_ceton_getvar( tuner_tmp_count, "HostConnection")
                     self.plugin_utils.logger.info('Ceton hardware type: %s' % hwtype)
 
-                if 'pci' in hwtype:
+                if 'pci' in hwtype and os.path.exists('/dev'): # won't work on windows
                     self.tunerstatus[str(tuner_tmp_count)]['ceton_pcie']  = True
                     self.tunerstatus[str(tuner_tmp_count)]['port']  = "ctn91xx_mpeg0_%s" % i
                     self.tunerstatus[str(tuner_tmp_count)]['streamurl'] = "/dev/ctn91xx_mpeg0_%s" % i
@@ -52,6 +53,11 @@ class Plugin_OBJ():
                     self.tunerstatus[str(tuner_tmp_count)]['ceton_pcie']  = False
                     self.tunerstatus[str(tuner_tmp_count)]['port']  = port + i
                     self.tunerstatus[str(tuner_tmp_count)]['streamurl'] = "udp://127.0.0.1:%s" % (port + i)
+                    # if we are using RTP on a pcie card, we need to stream to the ip it gives us
+                    if 'pci' in hwtype:
+                        self.tunerstatus[str(tuner_tmp_count)]['dest_ip'] = self.pcie_ip
+                    else:
+                        self.tunerstatus[str(tuner_tmp_count)]['dest_ip'] = self.plugin_utils.config.dict["fhdhr"]["address"]
 
                 self.startstop_ceton_tuner(tuner_tmp_count, 0)
                 tuner_tmp_count += 1
@@ -212,7 +218,7 @@ class Plugin_OBJ():
 
         StartStopUrl = 'http://%s/stream_request.cgi' % self.tunerstatus[str(instance)]['ceton_ip']
 
-        dest_ip = self.plugin_utils.config.dict["fhdhr"]["address"]
+        dest_ip = self.tunerstatus[str(instance)]['dest_ip']
         dest_port = self.tunerstatus[str(instance)]['port']
 
         StartStop_data = {"instance_id": instance,
