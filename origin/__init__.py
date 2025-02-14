@@ -42,7 +42,12 @@ class Plugin_OBJ():
                 self.tunerstatus[str(tuner_tmp_count)]['ceton_tuner'] = str(i)
 
                 if i == 0:
-                    hwtype = self.get_ceton_getvar( tuner_tmp_count, "HostConnection")
+                    while True:
+                        try:
+                            hwtype = self.get_ceton_getvar(tuner_tmp_count, "HostConnection")
+                            break
+                        except Exception as err:
+                            self.plugin_utils.logger.warning('%s, retrying.' % err)
                     self.plugin_utils.logger.info('Ceton hardware type: %s' % hwtype)
 
                 if 'pci' in hwtype and os.path.exists('/dev'): # won't work on windows
