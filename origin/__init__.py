@@ -42,12 +42,7 @@ class Plugin_OBJ():
                 self.tunerstatus[str(tuner_tmp_count)]['ceton_tuner'] = str(i)
 
                 if i == 0:
-                    while True:
-                        try:
-                            hwtype = self.get_ceton_getvar(tuner_tmp_count, "HostConnection")
-                            break
-                        except Exception as err:
-                            self.plugin_utils.logger.warning('%s, retrying.' % err)
+                    hwtype = self.get_ceton_getvar(tuner_tmp_count, "HostConnection")
                     self.plugin_utils.logger.info('Ceton hardware type: %s' % hwtype)
 
                 if 'pci' in hwtype and os.path.exists('/dev'): # won't work on windows
@@ -92,6 +87,19 @@ class Plugin_OBJ():
     def pcie_ip(self):
         return self.config_dict["pcie_ip"]
 
+    def ceton_request(self, url, data=None, headers=None):
+        while True:
+            try:
+                if data:
+                    req = self.plugin_utils.web.session.post(url, data, headers=headers)
+                else:
+                    req = self.plugin_utils.web.session.get(url, headers=headers)
+                req.raise_for_status()
+                return req
+            # ceton may not be responding yet at boot or wake, so retry.
+            except self.plugin_utils.web.exceptions.ConnectionError as err:
+                self.plugin_utils.logger.warning('%s, retrying.' % err)
+
     def get_ceton_getvar(self, instance, query):
         query_type = {
                       "Frequency": "&s=tuner&v=Frequency",
@@ -121,10 +129,9 @@ class Plugin_OBJ():
             #ceton web server hangs if the request is a certain length?!
             #kernel 6.x buffering issue? I have no clue.
             #pad the url to be at least 64 bytes, this seems to fix it.
-            getVarUrlReq = self.plugin_utils.web.session.get(
+            getVarUrlReq = self.ceton_request(
                 getVarUrl + '&' + '*' * (64-len( getVarUrl)) 
             )
-            getVarUrlReq.raise_for_status()
         except self.plugin_utils.web.exceptions.HTTPError as err:
             self.plugin_utils.logger.error('Error while getting Ceton tuner variable for %s: %s' % (query, err))
             return None
@@ -235,7 +242,7 @@ class Plugin_OBJ():
         # StartStop ... OK to Stop tuner for pcie (and safe), but do not Start => or blocks pcie (/dev)!
         if not (startstop and self.tunerstatus[str(instance)]['ceton_pcie']):
             try:
-                StartStopUrlReq = self.plugin_utils.web.session.post(StartStopUrl, StartStop_data)
+                StartStopUrlReq = self.ceton_request(StartStopUrl, StartStop_data)
                 StartStopUrlReq.raise_for_status()
             except self.plugin_utils.web.exceptions.HTTPError as err:
                 self.plugin_utils.logger.error('Error while setting station stream: %s' % err)
@@ -249,7 +256,7 @@ class Plugin_OBJ():
                             "channel": chandict['origin_number']}
 
         try:
-            tuneChannelUrlReq = self.plugin_utils.web.session.post(tuneChannelUrl, tuneChannel_data)
+            tuneChannelUrlReq = self.ceton_request(tuneChannelUrl, tuneChannel_data)
             tuneChannelUrlReq.raise_for_status()
         except self.plugin_utils.web.exceptions.HTTPError as err:
             self.plugin_utils.logger.error('Error while tuning station URL: %s' % err)
@@ -265,8 +272,7 @@ class Plugin_OBJ():
         count_url = 'http://%s/view_channel_map.cgi?page=1' % self.tunerstatus[str(instance)]['ceton_ip']
 
         try:
-            countReq = self.plugin_utils.web.session.get(count_url, headers=url_headers)
-            countReq.raise_for_status()
+            countReq = self.ceton_request(count_url, headers=url_headers)
         except self.plugin_utils.web.exceptions.HTTPError as err:
             self.plugin_utils.logger.error('Error while getting channel count: %s' % err)
             return []
@@ -279,8 +285,7 @@ class Plugin_OBJ():
             stations_url = "http://%s/view_channel_map.cgi?page=%s&xml=1" % (self.tunerstatus[str(instance)]['ceton_ip'], page)
 
             try:
-                stationsReq = self.plugin_utils.web.session.get(stations_url, headers=url_headers)
-                stationsReq.raise_for_status()
+                stationsReq = self.ceton_request(stations_url, headers=url_headers)
             except self.plugin_utils.web.exceptions.HTTPError as err:
                 self.plugin_utils.logger.error('Error while getting stations: %s' % err)
                 return []
