@@ -52,12 +52,13 @@ class Plugin_OBJ():
                 else:
                     self.tunerstatus[str(tuner_tmp_count)]['ceton_pcie']  = False
                     self.tunerstatus[str(tuner_tmp_count)]['port']  = port + i
-                    self.tunerstatus[str(tuner_tmp_count)]['streamurl'] = "udp://127.0.0.1:%s" % (port + i)
                     # if we are using RTP on a pcie card, we need to stream to the ip it gives us
                     if 'pci' in hwtype:
-                        self.tunerstatus[str(tuner_tmp_count)]['dest_ip'] = self.pcie_ip
+                        dest_ip = self.pcie_ip
                     else:
-                        self.tunerstatus[str(tuner_tmp_count)]['dest_ip'] = self.plugin_utils.config.dict["fhdhr"]["address"]
+                        dest_ip = self.plugin_utils.config.dict["fhdhr"]["address"]
+                    self.tunerstatus[str(tuner_tmp_count)]['dest_ip'] = dest_ip
+                    self.tunerstatus[str(tuner_tmp_count)]['streamurl'] = "rtp://%s:%s" % (dest_ip, port + i)
 
                 self.startstop_ceton_tuner(tuner_tmp_count, 0)
                 tuner_tmp_count += 1
