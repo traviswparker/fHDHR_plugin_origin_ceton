@@ -1,14 +1,14 @@
 {
   "ceton":{
           "ceton_ip":{
-                    "value": "none",
+                    "value": "192.168.200.1",
                     "config_file": true,
                     "config_web": true,
                     "valid_options": "list",
                     "description": "A Comma Seperated list of Ceton device IP addresses"
                 },
           "pcie_ip":{
-                    "value": "none",
+                    "value": "192.168.200.2",
                     "config_file": true,
                     "config_web": true,
                     "description": "IP assigned by the Ceton to the PCIe network interface"
@@ -28,7 +28,7 @@
                     "description": "The total number of tuners for all Ceton devices"
                 },
           "stream_method":{
-                    "value": "ffmpeg",
+                    "value": "direct",
                     "config_file": true,
                     "config_web": true
                 },
