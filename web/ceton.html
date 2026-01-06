@@ -68,7 +68,7 @@
                 <td align="right">{{ origin_status_dict[key]['SNR'] }}</td>
                 <td align="right">{{ origin_status_dict[key]['BER'] }}</td>
                 <td align="center">{{ origin_status_dict[key]['Modulation'] }}</td>
-            {% if (origin_status_dict[key]['Transport'] == "PLAYING") or (origin_status_dict[key]['HWState'] == "In Use") %}
+            {% if (origin_status_dict[key]['Transport'] == "PLAYING") or (origin_status_dict[key]['HWState']) %}
                <td><button onclick="location.href='/api/ceton?method=close&tuner={{ key[5:] }}&redirect=%2Fceton'">Close</a></button></td>
             {% endif %}
           {% endif %}
