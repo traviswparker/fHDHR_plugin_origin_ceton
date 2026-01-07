@@ -44,7 +44,6 @@ class Plugin_OBJ():
 
                 if i == 0:
                     hwtype = self.get_ceton_var(tuner_tmp_count, "HostConnection") # on PCI reset this will retry until tuner comes up
-                    self.plugin_utils.logger.noob('Ceton hardware type: %s' % hwtype)
 
                 if 'pci' in hwtype and os.path.exists('/dev'): # won't work on windows
                     self.tunerstatus[str(tuner_tmp_count)]['ceton_pcie']  = True
@@ -62,6 +61,8 @@ class Plugin_OBJ():
                     self.tunerstatus[str(tuner_tmp_count)]['streamurl'] = "rtp://%s:%s" % (dest_ip, port + i)
 
                 self.startstop_ceton_tuner(tuner_tmp_count, 0)
+                self.plugin_utils.logger.noob('tuner %s: %s %s' % (tuner_tmp_count, device, hwtype))
+                
                 tuner_tmp_count += 1
             device_count = device_count + 1
 
@@ -89,11 +90,11 @@ class Plugin_OBJ():
     def pcie_ip(self):
         return self.config_dict["pcie_ip"]
 
-    def ceton_request(self, url, data=None, headers=None, retry=True, timeout=(1,None)):
+    def ceton_request(self, url, data=None, headers=None, retry=True, timeout=(1,None), action=None):
         #ceton web server hangs on linux if the request is a certain length?!
         #kernel 6.x buffering issue? I have no clue.
         #pad the url to be at least 64 bytes, this seems to fix it.
-        url = url + '&' + ' ' * (64 - len(url))      
+        url += '&retry=%s&action=%s' % (retry, action)
         while True:
             try:
                 if data:
@@ -137,9 +138,9 @@ class Plugin_OBJ():
         getVarUrl = ('http://%s/get_var?i=%s%s' % (self.tunerstatus[str(instance)]['ceton_ip'], self.tunerstatus[str(instance)]['ceton_tuner'], query_type[query]))
 
         try:
-            getVarUrlReq = self.ceton_request(getVarUrl, retry=retry)
+            getVarUrlReq = self.ceton_request(getVarUrl, retry=retry, action=query)
         except self.plugin_utils.web.exceptions.HTTPError as err:
-            self.plugin_utils.logger.error('Error while getting Ceton tuner variable for %s: %s' % (query, err))
+            self.plugin_utils.logger.error('Error while getting variable for %s: %s' % (query, err))
             return None
         except Exception as err: # tuner is offline or not ready yet
             self.plugin_utils.logger.warning(err)
@@ -184,9 +185,9 @@ class Plugin_OBJ():
                 # This also handles the case of another client accessing the tuner!
                 if (status == 'Inactive') and (transport == "STOPPED") and (not hwinuse):
                     if not scan:
-                        self.plugin_utils.logger.info('Selected Ceton tuner#: %s' % str(instance))
+                        self.plugin_utils.logger.info('Selected tuner#: %s' % str(instance))
                     else:
-                        self.plugin_utils.logger.debug('Scanning Ceton tuner#: %s' % str(instance))
+                        self.plugin_utils.logger.debug('Scanning tuner#: %s' % str(instance))
                     # Return needed info now (if not in scan mode)
                     if not scan:
                         found = 1
@@ -199,7 +200,7 @@ class Plugin_OBJ():
                             if (transport == "STOPPED") and (not hwinuse):
                                 # OK, fully stopped now, set accordingly
                                 self.plugin_utils.logger.info(
-                                    'Ceton tuner %s, StopPending "cleared", set status to Inactive' % str(instance))
+                                    'tuner %s, StopPending "cleared", set status to Inactive' % str(instance))
                                 self.tunerstatus[str(instance)]['status'] = "Inactive"
                                 self.tunerstatus[str(instance)]['stream_args'] = {}
                                 # Return needed info now (if not in scan mode)
@@ -210,7 +211,7 @@ class Plugin_OBJ():
                             # To get here, status is External - but check for stop => and update
                             if (transport == "STOPPED") and (not hwinuse):
                                 # No longer in use, set accordingly
-                                self.plugin_utils.logger.info('Ceton tuner %s, External state "cleared", now Inactive' %
+                                self.plugin_utils.logger.info('tuner %s, External state "cleared", now Inactive' %
                                                             str(instance))
                                 self.tunerstatus[str(instance)]['status'] = "Inactive"
                                 self.tunerstatus[str(instance)]['stream_args'] = {}
@@ -221,20 +222,20 @@ class Plugin_OBJ():
                             else:
                                 # External, and still in use
                                 if self.tunerstatus[str(instance)]['status'] != "External":
-                                    self.plugin_utils.logger.info('Ceton tuner %s, setting status to External' %
+                                    self.plugin_utils.logger.info('tuner %s, setting status to External' %
                                                                 str(instance))
                                 self.tunerstatus[str(instance)]['status'] = "External"
-                self.plugin_utils.logger.debug('Ceton tuner %s: status = %s' %
+                self.plugin_utils.logger.debug('tuner %s: status = %s' %
                                             (str(instance), self.tunerstatus[str(instance)]['status']))
         return found, instance
 
     def startstop_ceton_tuner(self, instance, startstop):
         if not startstop:
             port = 0
-            self.plugin_utils.logger.info('Ceton tuner %s to be stopped' % str(instance))
+            self.plugin_utils.logger.info('tuner %s to be stopped' % str(instance))
             self.tunerstatus[str(instance)]["status"] = "StopPending"
         else:
-            self.plugin_utils.logger.info('Ceton tuner %s to be started' % str(instance))
+            self.plugin_utils.logger.info('tuner %s to be started' % str(instance))
             self.tunerstatus[str(instance)]["status"] = "Active"
 
         StartStopUrl = 'http://%s/stream_request.cgi' % self.tunerstatus[str(instance)]['ceton_ip']
@@ -251,13 +252,13 @@ class Plugin_OBJ():
         # StartStop ... OK to Stop tuner for pcie (and safe), but do not Start => or blocks pcie (/dev)!
         if not (startstop and self.tunerstatus[str(instance)]['ceton_pcie']):
             try:
-                StartStopUrlReq = self.ceton_request(StartStopUrl, StartStop_data)
+                StartStopUrlReq = self.ceton_request(StartStopUrl, StartStop_data, action=startstop)
                 StartStopUrlReq.raise_for_status()
+                return dest_port
             except self.plugin_utils.web.exceptions.HTTPError as err:
                 self.plugin_utils.logger.error('Error while setting station stream: %s' % err)
                 return None
         
-        return dest_port
 
     def set_ceton_tuner(self, chandict, instance):
         tuneChannelUrl = 'http://%s/channel_request.cgi' % self.tunerstatus[str(instance)]['ceton_ip']
@@ -265,13 +266,13 @@ class Plugin_OBJ():
                             "channel": chandict['origin_number']}
 
         try:
-            tuneChannelUrlReq = self.ceton_request(tuneChannelUrl, tuneChannel_data)
+            tuneChannelUrlReq = self.ceton_request(tuneChannelUrl, tuneChannel_data, action=instance)
             tuneChannelUrlReq.raise_for_status()
+            return tuneChannelUrlReq
         except self.plugin_utils.web.exceptions.HTTPError as err:
             self.plugin_utils.logger.error('Error while tuning station URL: %s' % err)
             return None
 
-        return 1
 
     def get_channels(self):
         cleaned_channels = []
@@ -281,7 +282,7 @@ class Plugin_OBJ():
         count_url = 'http://%s/view_channel_map.cgi?page=1' % self.tunerstatus[str(instance)]['ceton_ip']
 
         try:
-            countReq = self.ceton_request(count_url, headers=url_headers)
+            countReq = self.ceton_request(count_url, headers=url_headers, action=instance)
         except self.plugin_utils.web.exceptions.HTTPError as err:
             self.plugin_utils.logger.error('Error while getting channel count: %s' % err)
             return []
@@ -294,7 +295,7 @@ class Plugin_OBJ():
             stations_url = "http://%s/view_channel_map.cgi?page=%s&xml=1" % (self.tunerstatus[str(instance)]['ceton_ip'], page)
 
             try:
-                stationsReq = self.ceton_request(stations_url, headers=url_headers)
+                stationsReq = self.ceton_request(stations_url, headers=url_headers, action=instance)
             except self.plugin_utils.web.exceptions.HTTPError as err:
                 self.plugin_utils.logger.error('Error while getting stations: %s' % err)
                 return []
@@ -342,10 +343,10 @@ class Plugin_OBJ():
                 port = self.startstop_ceton_tuner(instance, 1)
             else:
                 port = None
-                self.plugin_utils.logger.error('No Ceton tuners available')
+                self.plugin_utils.logger.error('No tuners available')
 
             if port:
-                self.plugin_utils.logger.noob('Setting Ceton tuner %s to %s' % (instance, chandict))
+                self.plugin_utils.logger.noob('Opening tuner %s for %s' % (instance, chandict))
                 tuned = self.set_ceton_tuner(chandict, instance)
             else:
                 tuned = None
@@ -355,17 +356,14 @@ class Plugin_OBJ():
                 self.get_ceton_var(instance, "Frequency")
                 self.get_ceton_var(instance, "ProgramNumber")
                 self.get_ceton_var(instance, "CopyProtectionStatus")
-                self.plugin_utils.logger.noob('Initiate streaming channel %s from Ceton tuner %s on port %s' % (chandict['origin_number'], instance, port))
+                self.plugin_utils.logger.noob('Initiate streaming channel %s from tuner %s on port %s' % (chandict['origin_number'], instance, port))
                 streamurl = self.tunerstatus[str(instance)]['streamurl']
             else:
                 streamurl = None
 
             stream_info = {"url": streamurl, "tuner": instance}
-
             return stream_info
 
     def close_stream(self, instance, stream_args):
-        closetuner = stream_args["stream_info"]["tuner"]
-        self.plugin_utils.logger.noob('Closing Ceton tuner %s (fHDHR tuner %s)' % (closetuner, instance))
-        self.startstop_ceton_tuner(closetuner, 0)
-        return
+        self.plugin_utils.logger.noob('Closing tuner %s' % (instance))
+        self.startstop_ceton_tuner(stream_args["stream_info"]["tuner"], 0)
