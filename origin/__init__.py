@@ -44,7 +44,7 @@ class Plugin_OBJ():
 
                 if i == 0:
                     hwtype = self.get_ceton_var(tuner_tmp_count, "HostConnection") # on PCI reset this will retry until tuner comes up
-                    self.plugin_utils.logger.info('Ceton hardware type: %s' % hwtype)
+                    self.plugin_utils.logger.noob('Ceton hardware type: %s' % hwtype)
 
                 if 'pci' in hwtype and os.path.exists('/dev'): # won't work on windows
                     self.tunerstatus[str(tuner_tmp_count)]['ceton_pcie']  = True
@@ -90,6 +90,10 @@ class Plugin_OBJ():
         return self.config_dict["pcie_ip"]
 
     def ceton_request(self, url, data=None, headers=None, retry=True, timeout=(1,None)):
+        #ceton web server hangs on linux if the request is a certain length?!
+        #kernel 6.x buffering issue? I have no clue.
+        #pad the url to be at least 64 bytes, this seems to fix it.
+        url = url + '&' + ' ' * (64 - len(url))      
         while True:
             try:
                 if data:
@@ -98,9 +102,10 @@ class Plugin_OBJ():
                     req = self.plugin_utils.web.session.get(url, headers=headers, timeout=timeout)
                 req.raise_for_status()
                 return req
-            # ceton may not be responding yet at boot or wake, so retry.
+            except self.plugin_utils.web.exceptions.HTTPError as err:
+                raise err # do not retry on HTTP error
+            # ceton may not be responding yet at boot or wake, so maybe retry.
             except Exception as err:
-                self.plugin_utils.logger.warning(err)
                 if retry:
                     time.sleep(1) # wait and try again
                 else:
@@ -132,17 +137,12 @@ class Plugin_OBJ():
         getVarUrl = ('http://%s/get_var?i=%s%s' % (self.tunerstatus[str(instance)]['ceton_ip'], self.tunerstatus[str(instance)]['ceton_tuner'], query_type[query]))
 
         try:
-            #ceton web server hangs if the request is a certain length?!
-            #kernel 6.x buffering issue? I have no clue.
-            #pad the url to be at least 64 bytes, this seems to fix it.
-            getVarUrlReq = self.ceton_request(
-                getVarUrl + '&' + '*' * (64-len( getVarUrl)),
-                retry=retry 
-            )
+            getVarUrlReq = self.ceton_request(getVarUrl, retry=retry)
         except self.plugin_utils.web.exceptions.HTTPError as err:
             self.plugin_utils.logger.error('Error while getting Ceton tuner variable for %s: %s' % (query, err))
             return None
-        except: # tuner is offline or not ready yet
+        except Exception as err: # tuner is offline or not ready yet
+            self.plugin_utils.logger.warning(err)
             return None
 
         result = re.search('get.>(.*)</body', getVarUrlReq.text)
@@ -345,8 +345,8 @@ class Plugin_OBJ():
                 self.plugin_utils.logger.error('No Ceton tuners available')
 
             if port:
+                self.plugin_utils.logger.noob('Setting Ceton tuner %s to %s' % (instance, chandict))
                 tuned = self.set_ceton_tuner(chandict, instance)
-                self.plugin_utils.logger.info('Preparing Ceton tuner %s on port: %s' % (instance, port))
             else:
                 tuned = None
 
@@ -355,11 +355,7 @@ class Plugin_OBJ():
                 self.get_ceton_var(instance, "Frequency")
                 self.get_ceton_var(instance, "ProgramNumber")
                 self.get_ceton_var(instance, "CopyProtectionStatus")
-                if not self.tunerstatus[str(instance)]['ceton_pcie']:
-                    self.plugin_utils.logger.info('Initiate streaming channel %s from Ceton tuner#: %s ' % (chandict['origin_number'], instance))
-                else:
-                    # PCIe, only use /dev, not rtp => no additional logic needed to handle this then, and can still change stream_method (direct, ffmpeg)
-                    self.plugin_utils.logger.info('Initiate PCIe direct streaming, channel %s from Ceton tuner#: %s ' % (chandict['origin_number'], instance))
+                self.plugin_utils.logger.noob('Initiate streaming channel %s from Ceton tuner %s on port %s' % (chandict['origin_number'], instance, port))
                 streamurl = self.tunerstatus[str(instance)]['streamurl']
             else:
                 streamurl = None
@@ -370,6 +366,6 @@ class Plugin_OBJ():
 
     def close_stream(self, instance, stream_args):
         closetuner = stream_args["stream_info"]["tuner"]
-        self.plugin_utils.logger.info('Closing Ceton tuner %s (fHDHR tuner %s)' % (closetuner, instance))
+        self.plugin_utils.logger.noob('Closing Ceton tuner %s (fHDHR tuner %s)' % (closetuner, instance))
         self.startstop_ceton_tuner(closetuner, 0)
         return
