@@ -287,7 +287,7 @@ class Plugin_OBJ():
             self.plugin_utils.logger.error('Error while getting channel count: %s' % err)
             return []
 
-        count = re.search('(?<=1 to 50 of )\w+', countReq.text)
+        count = re.search('(?<=1 to 50 of )\\w+', countReq.text)
         count = int(count.group(0))
         page = 0
 
@@ -365,5 +365,6 @@ class Plugin_OBJ():
             return stream_info
 
     def close_stream(self, instance, stream_args):
-        self.plugin_utils.logger.noob('Closing tuner %s' % (instance))
-        self.startstop_ceton_tuner(stream_args["stream_info"]["tuner"], 0)
+        closetuner = stream_args["stream_info"]["tuner"]
+        self.plugin_utils.logger.noob('Closing tuner %s' % closetuner)
+        self.startstop_ceton_tuner(closetuner, 0)
