@@ -93,8 +93,8 @@ class Plugin_OBJ():
     def ceton_request(self, url, data=None, headers=None, retry=True, timeout=(1,None), action=None):
         #ceton web server hangs on linux if the request is a certain length?!
         #kernel 6.x buffering issue? I have no clue.
-        #pad the url to be at least 64 bytes, this seems to fix it.
-        url += '&retry=%s&action=%s' % (retry, action)
+        #pad the request to be an even number of bytes, this seems to fix it.
+        if not len(url) % 2 : url += '&'
         while True:
             try:
                 if data:
@@ -102,12 +102,15 @@ class Plugin_OBJ():
                 else:
                     req = self.plugin_utils.web.session.get(url, headers=headers, timeout=timeout)
                 req.raise_for_status()
+                self.plugin_utils.logger.debug('%s %s %s' % (len(url), url, len(req.text)))
                 return req
             except self.plugin_utils.web.exceptions.HTTPError as err:
                 raise err # do not retry on HTTP error
             # ceton may not be responding yet at boot or wake, so maybe retry.
             except Exception as err:
                 if retry:
+                    self.plugin_utils.logger.debug('%s %s %s' % (len(url), url, err))
+                    url += '&' # buffering bug workaround, if it hangs adjust length by 1
                     time.sleep(1) # wait and try again
                 else:
                     raise err # raise the error up
@@ -240,7 +243,7 @@ class Plugin_OBJ():
 
         StartStopUrl = 'http://%s/stream_request.cgi' % self.tunerstatus[str(instance)]['ceton_ip']
 
-        dest_ip = self.tunerstatus[str(instance)]['dest_ip']
+        dest_ip = self.tunerstatus[str(instance)].get('dest_ip') # will not be set if pcie
         dest_port = self.tunerstatus[str(instance)]['port']
 
         StartStop_data = {"instance_id": instance,
@@ -258,6 +261,8 @@ class Plugin_OBJ():
             except self.plugin_utils.web.exceptions.HTTPError as err:
                 self.plugin_utils.logger.error('Error while setting station stream: %s' % err)
                 return None
+        else:
+            return dest_port #direct pcie stream
         
 
     def set_ceton_tuner(self, chandict, instance):
@@ -279,7 +284,7 @@ class Plugin_OBJ():
         instance = 0 #Use the first tuner
         url_headers = {'accept': 'application/xml;q=0.9, */*;q=0.8'}
 
-        count_url = 'http://%s/view_channel_map.cgi?page=1' % self.tunerstatus[str(instance)]['ceton_ip']
+        count_url = 'http://%s/view_channel_map.cgi?page=1&xml=0' % self.tunerstatus[str(instance)]['ceton_ip']
 
         try:
             countReq = self.ceton_request(count_url, headers=url_headers, action=instance)
