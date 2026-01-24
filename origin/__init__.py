@@ -90,13 +90,14 @@ class Plugin_OBJ():
     def pcie_ip(self):
         return self.config_dict["pcie_ip"]
 
-    def ceton_request(self, url, data=None, headers=None, retry=True, timeout=(1,None), action=None):
+    def ceton_request(self, url, data=None, headers=None, retry=True, timeout=5, action=None):
         #ceton web server hangs on linux if the request is a certain length?!
         #kernel 6.x buffering issue? I have no clue.
-        #pad the request to be an even number of bytes, this seems to fix it.
-        if not len(url) % 2 : url += '&'
+        #pad if needed
+        url += '\x00' * (255-len(url))
         while True:
             try:
+                self.plugin_utils.logger.debug('%s %s' % (len(url), url))
                 if data:
                     req = self.plugin_utils.web.session.post(url, data, headers=headers, timeout=timeout)
                 else:
@@ -105,12 +106,15 @@ class Plugin_OBJ():
                 self.plugin_utils.logger.debug('%s %s %s' % (len(url), url, len(req.text)))
                 return req
             except self.plugin_utils.web.exceptions.HTTPError as err:
-                raise err # do not retry on HTTP error
-            # ceton may not be responding yet at boot or wake, so maybe retry.
+                if e.response.status_code == 500: # ceton boot race condition
+                    time.sleep(1)
+                else:
+                    raise err # do not retry on HTTP error
+            # ceton may not be responding yet, so maybe retry.
             except Exception as err:
                 if retry:
                     self.plugin_utils.logger.debug('%s %s %s' % (len(url), url, err))
-                    url += '&' # buffering bug workaround, if it hangs adjust length by 1
+                    url += '\x00' # buffering bug workaround, if it hangs adjust length by 1
                     time.sleep(1) # wait and try again
                 else:
                     raise err # raise the error up
@@ -287,7 +291,7 @@ class Plugin_OBJ():
         count_url = 'http://%s/view_channel_map.cgi?page=1&xml=0' % self.tunerstatus[str(instance)]['ceton_ip']
 
         try:
-            countReq = self.ceton_request(count_url, headers=url_headers, action=instance)
+            countReq = self.ceton_request(count_url, headers=url_headers)
         except self.plugin_utils.web.exceptions.HTTPError as err:
             self.plugin_utils.logger.error('Error while getting channel count: %s' % err)
             return []
@@ -300,7 +304,7 @@ class Plugin_OBJ():
             stations_url = "http://%s/view_channel_map.cgi?page=%s&xml=1" % (self.tunerstatus[str(instance)]['ceton_ip'], page)
 
             try:
-                stationsReq = self.ceton_request(stations_url, headers=url_headers, action=instance)
+                stationsReq = self.ceton_request(stations_url, headers=url_headers)
             except self.plugin_utils.web.exceptions.HTTPError as err:
                 self.plugin_utils.logger.error('Error while getting stations: %s' % err)
                 return []
